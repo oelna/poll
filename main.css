@@ -1,0 +1,268 @@
+* {
+	margin: 0;
+	padding: 0;
+	box-sizing: border-box;
+}
+
+html {
+	font-family: system-ui, sans-serif;
+	background-color: #fff;
+	color: #333;
+	line-height: 1.4;
+}
+
+body {
+	
+}
+
+.container {
+	outline: 0px solid red;
+	max-width: 800px;
+	margin: 2rem auto 8rem;
+	padding: 1rem;
+}
+
+.header {
+	text-align: center;
+	margin-block-end: 30px;
+	display: none;
+}
+
+h1 {
+	font-size: 1.4rem;
+	line-height: 1.1;
+	margin-block-end: 1lh;
+}
+
+h2 {
+	font-size: 1.05rem;
+	line-height: 1.15;
+	margin-block-end: 0.5em;
+}
+
+h3 {
+	font-size: 1rem;
+	line-height: 1.2;
+	margin-block-end: 0.5em;
+}
+
+:is(h1, h2, h3) a {
+	color: currentColor;
+	text-decoration: none;
+}
+
+.card {
+	margin-block-end: 20px;
+	padding: 1rem;
+}
+
+.vote-form {
+	margin-block-end: 4rem;
+	border-block-end: 0px solid currentColor;
+}
+
+.form-group {
+	margin-block-end: 1rem;
+}
+
+.vote-option {
+	padding: 0.5rem;
+	border: 1px solid #bbb;
+	border-block-end: 0;
+}
+
+.vote-option:last-of-type {
+	border-block-end: 1px solid #bbb;
+}
+
+.vote-option:hover {
+	background: #eee;
+}
+
+.vote-option label {
+	display: flex;
+	gap: 1ch;
+	align-items: center;
+	cursor: pointer;
+	margin-block-end: 0;
+}
+
+.vote-option input[type="checkbox"] {
+	
+}
+
+label {
+	display: block;
+	margin-block-end: 0.5rem;
+	font-weight: 600;
+}
+
+input[type="text"], textarea {
+	width: 100%;
+	padding: 0.5em;
+	border: 1px solid #bbb;
+	border-radius: 0;
+	font-size: 1rem;
+	font: inherit;
+}
+
+input[type="text"]:focus, textarea:focus {
+	outline: none;
+	border-color: #000;
+}
+
+textarea {
+	min-height: calc((4lh + (2 * 0.5em)) + 2px); /* 4 lines of text, plus 2 times padding + border */
+	resize: vertical;
+}
+
+.options-container {
+	margin-block-end: 1rem;
+	display: flex;
+	flex-flow: column;
+	align-items: flex-end;
+}
+
+.option-input {
+	border: 1px solid #bbb;
+	width: 100%;
+}
+
+.option-input + .option-input {
+	border-block-start: 0px;
+}
+
+.option-input input {
+	border: 0;
+}
+
+.options-container button {
+	margin-block-start: 1rem;
+}
+
+.btn {
+	background: #000;
+	color: #fff;
+	padding: 0.5em 1em;
+	border: none;
+	cursor: pointer;
+	font-size: 1rem;
+	text-decoration: none;
+	transition: background 0.3s;
+}
+
+.btn:hover {
+	background: #444;
+}
+
+.message {
+	padding: 0.5rem;
+	margin-block-end: 1rem;
+}
+
+.message.success {
+	background: #d4edda;
+	color: #155724;
+	border: 1px solid #c3e6cb;
+}
+
+.message.error {
+	background: #f8d7da;
+	color: #721c24;
+	border: 1px solid #f5c6cb;
+}
+
+.poll-info {
+	display: grid;
+	grid-template-columns: 3fr 2fr;
+	margin-block-end: 1rem;
+}
+
+.poll-info p {
+	margin-block-end: 0.5lh;
+}
+
+.poll-info .meta {
+	display: flex;
+	justify-content: flex-end;
+	align-items: center;
+	gap: 1ch;
+}
+
+.poll-info .meta > :is(time, a),
+.btn-secondary {
+	font-size: 0.85rem;
+	text-decoration: none;
+	color: #666;
+	background: #ddd;
+	border-radius: 1rem;
+	padding: 0.2em 0.7em;
+}
+
+.poll-info .meta a:hover,
+.btn-secondary:hover {
+	background: #ccc;
+}
+
+.poll-info .desc {
+	grid-column: 1 / 5;
+}
+
+.results-summary {
+	margin-block-start: 2rem;
+}
+
+.voting-table {
+	width: 100%;
+	border-collapse: collapse;
+	table-layout: fixed;
+	margin-block-end: 2rem;
+}
+
+.voting-table th, .voting-table td {
+	border-block-end: 1px solid #bbb;
+	padding: 0.5em 1em 0.5em 0.5em;
+}
+
+.voting-table th:first-child, .voting-table td:first-child {
+	padding-inline-start: 0;
+}
+
+.voting-table th {
+	text-align: left;
+	vertical-align: top;
+}
+
+.voting-table tr:hover {
+	background: #eee;
+}
+
+.voting-table td.vote-yes {
+	background: #6aca92;
+}
+
+.voting-table td.vote-no {
+	background: #fdcfd3;
+}
+
+.voting-table tr.voting-table-footer th { border-block-end: 0 }
+
+.voting-table tr.voting-table-footer span:nth-child(1) { display: none; }
+.voting-table tr.voting-table-footer span:nth-child(2) { display: block; }
+
+.voting-table tr.voting-table-footer:hover span:nth-child(1) { display: block; }
+.voting-table tr.voting-table-footer:hover span:nth-child(2) { display: none; }
+
+.poll-error {
+	background: #f8d7da;
+	color: #721c24;
+	border: 1px solid #f5c6cb;
+	padding: 20px;
+	margin-block-end: 2rem;
+}
+
+.already-voted {
+	margin-block-end: 1rem;
+	background: #eee;
+	padding: 0.5rem;
+}
