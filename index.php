@@ -4,38 +4,81 @@ session_start();
 // Configuration
 $uid_length = 6; // length of the random poll URLs
 
+$site_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] == 'on' ? 'https' : 'http').'://'.$_SERVER['HTTP_HOST'];
+
 $polls_directory = 'polls';
 if (!file_exists($polls_directory)) {
 	mkdir($polls_directory, 0755, true);
 }
 
 // Helper functions
-function generatePollId() {
-	global $uid_length;
+function generatePollId($maxAttempts = 10) {
+	global $uid_length, $polls_directory;
 	$chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-	$result = '';
-	for ($i = 0; $i < $uid_length; $i++) {
-		$result .= $chars[rand(0, strlen($chars) - 1)];
+	
+	for ($attempt = 0; $attempt < $maxAttempts; $attempt++) {
+		$result = '';
+		for ($i = 0; $i < $uid_length; $i++) {
+			$result .= $chars[rand(0, strlen($chars) - 1)];
+		}
+		$path = $polls_directory . '/' . $result . '.json';
+		if (!file_exists($path)) {
+			return $result;
+		}
 	}
-	return $result;
+	return false; // failed to generate unique ID
+}
+
+function isValidPollId($pollId) {
+	global $uid_length;
+	$regex = '/^[a-z0-9]{' . $uid_length . ',}$/';
+	return preg_match($regex, $pollId);
 }
 
 function getPollPath($pollId) {
 	global $polls_directory;
+	if (!isValidPollId($pollId)) {
+		die('Invalid poll ID.'); // Fail hard for security
+	}
 	return $polls_directory . '/' . $pollId . '.json';
 }
 
 function loadPoll($pollId) {
 	$path = getPollPath($pollId);
-	if (file_exists($path)) {
-		return json_decode(file_get_contents($path), true);
+	if (!file_exists($path)) return null;
+	$fp = fopen($path, 'r');
+	if (!$fp) return null;
+
+	if (flock($fp, LOCK_SH)) {
+		$data = stream_get_contents($fp);
+		flock($fp, LOCK_UN);
+		fclose($fp);
+		return json_decode($data, true);
+	} else {
+		fclose($fp);
+		return null;
 	}
-	return null;
 }
 
-function savePoll($pollId, $pollData) {
+function savePoll($pollId, $pollData) { // atomic vote recording
 	$path = getPollPath($pollId);
-	return file_put_contents($path, json_encode($pollData, JSON_PRETTY_PRINT));
+	$fp = fopen($path, 'c+'); // 'c+' allows reading and writing, creates if not exists
+	if (!$fp) return false;
+
+	// Acquire an exclusive lock (blocking)
+	if (flock($fp, LOCK_EX)) {
+		// Rewind, truncate, write
+		ftruncate($fp, 0);
+		rewind($fp);
+		fwrite($fp, json_encode($pollData, JSON_PRETTY_PRINT));
+		fflush($fp); // flush output before releasing lock
+		flock($fp, LOCK_UN); // release lock
+		fclose($fp);
+		return true;
+	} else {
+		fclose($fp);
+		return false;
+	}
 }
 
 function sanitize($input) {
@@ -46,6 +89,12 @@ function sanitize($input) {
 $message = '';
 $error = '';
 
+// Set up defaults for form repopulation
+$title = '';
+$description = '';
+$options = ['', '', '', ''];
+$password = '';
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 	if (isset($_POST['create_poll'])) {
 		// Create new poll
@@ -55,9 +104,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 		$description = sanitize($description);
 		$password = !empty($_POST['password']) ? password_hash($_POST['password'], PASSWORD_DEFAULT) : null;
 		$options = array_filter(array_map('sanitize', $_POST['options']));
+		$options = array_filter($options, function($opt) {
+			return strlen(trim($opt)) > 0; // prevent empty poll options
+		});
+		$options_lower = array_map('mb_strtolower', $options);
+		$options = array_intersect_key($options, array_unique($options_lower));
+		$options = array_values($options); // reindex for consistent indices
+
+		// Max length checks
+		if (mb_strlen($title) > 100) {
+			$error = 'Poll title must be at most 100 characters.';
+		}
+		if (mb_strlen($description) > 3000) {
+			$error = 'Description must be at most 3000 characters.';
+		}
+		foreach ($options as $option) {
+			if (mb_strlen($option) > 60) {
+				$error = 'Each option must be at most 60 characters.';
+				break;
+			}
+		}
 		
-		if (empty($title) || empty($options)) {
-			$error = 'Title and at least one time option are required.';
+		if (empty($title) || count($options) < 1) {
+			$error = 'Title and at least one unique, non-empty option are required.';
 		} else {
 			$pollId = generatePollId();
 			$pollData = [
@@ -70,7 +139,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 				'created_at' => date('Y-m-d H:i:s')
 			];
 			
-			if (savePoll($pollId, $pollData)) {
+			if ($pollId !== false && savePoll($pollId, $pollData)) {
 				header("Location: /" . $pollId);
 				exit;
 			} else {
@@ -80,7 +149,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 	} elseif (isset($_POST['vote'])) {
 		// Submit vote
 		$pollId = sanitize($_POST['poll_id']);
+		if (!isValidPollId($pollId)) {
+			$error = 'Invalid poll ID provided.';
+		}
 		$voterName = sanitize($_POST['voter_name']);
+		if (mb_strlen($voterName) > 40) {
+			$error = 'Your name must be at most 40 characters.';
+		}
 		$votes = $_POST['votes'] ?? [];
 		
 		if (empty($voterName)) {
@@ -193,11 +268,11 @@ if (!$currentPoll && !$pollError && isset($_GET['poll'])) {
 			<!-- Display Poll -->
 			<div class="card">
 				<div class="poll-info">
-					<h1><a href="<?php echo $_SERVER['REQUEST_SCHEME'] . '://' . $_SERVER['HTTP_HOST'] . '/' . $currentPoll['id']; ?>"><?php echo sanitize($currentPoll['title']); ?></a></h1>
+					<h1><a href="<?php echo $site_url . '/' . $currentPoll['id']; ?>"><?php echo sanitize($currentPoll['title']); ?></a></h1>
 
 					<div class="meta">
 						<time title="Create Date" datetime="<?php echo $currentPoll['created_at']; ?>"><?php echo date('d.m.y', strtotime($currentPoll['created_at'])); ?></time>
-						<a href="<?php echo $_SERVER['REQUEST_SCHEME'] . '://' . $_SERVER['HTTP_HOST'] . '/' . $currentPoll['id']; ?>">id:<?php echo $currentPoll['id']; ?></a>
+						<a href="<?php echo $site_url . '/' . $currentPoll['id']; ?>">id:<?php echo $currentPoll['id']; ?></a>
 						<a href="/">New Poll +</a>
 					</div>
 
@@ -209,7 +284,7 @@ if (!$currentPoll && !$pollError && isset($_GET['poll'])) {
 				</div>
 
 				<!--<div class="poll-url">
-					<strong>Share this poll:</strong> <a href="<?php echo $_SERVER['REQUEST_SCHEME'] . '://' . $_SERVER['HTTP_HOST'] . '/' . $currentPoll['id']; ?>"><?= $currentPoll['id']; ?></a>
+					<strong>Share this poll:</strong> <a href="<?php echo $site_url . '/' . $currentPoll['id']; ?>"><?= $currentPoll['id']; ?></a>
 				</div>-->
 
 				<?php 
@@ -296,7 +371,7 @@ if (!$currentPoll && !$pollError && isset($_GET['poll'])) {
 											$isFavorite = $count > 0 && $count === $highestVoteCount;
 											?>
 											<th class="option-footer <?php echo $isFavorite ? 'vote-favorite' : ''; ?>">
-												<span><?php echo $count . ' ' . ngettext("Vote", "Votes", $count); ?></span>
+												<span><?php echo $count . ' ' . ($count == 1 ? 'Vote' : 'Votes'); ?></span>
 												<span><?php echo round($percentage, 1); ?>%</span>
 											</th>
 											<?php
@@ -318,36 +393,34 @@ if (!$currentPoll && !$pollError && isset($_GET['poll'])) {
 				<form method="post">
 					<div class="form-group">
 						<label for="title">Poll Title:</label>
-						<input type="text" id="title" name="title" required placeholder="e.g., Team Meeting">
+						<input type="text" id="title" name="title" required placeholder="e.g., Team Meeting" value="<?php echo $title; ?>">
 					</div>
 
 					<div class="form-group">
 						<label for="description">Description (optional):</label>
-						<textarea id="description" name="description" rows="3" placeholder="Additional details about the event …"></textarea>
+						<textarea id="description" name="description" rows="3" placeholder="Additional details about the event …" value="<?php echo $description; ?>"></textarea>
 					</div>
 
 					<div class="form-group">
 						<label for="password">Password (optional):</label>
-						<input type="text" id="password" name="password" placeholder="">
+						<input type="text" id="password" name="password" placeholder="" value="<?php echo $password; ?>">
 						<small>Setting a password may allow you to edit this poll later.</small>
 					</div>
 
 					<div class="form-group">
 						<label>Options:</label>
 						<div class="options-container">
-							<div class="option-input">
-								<input type="text" name="options[]" placeholder="e.g., Monday, Jan 15 at 2:00 PM" required>
-							</div>
-							<div class="option-input">
-								<input type="text" name="options[]" placeholder="e.g., Tuesday, Jan 16 at 10:00 AM">
-							</div>
-							<div class="option-input">
-								<input type="text" name="options[]" placeholder="e.g., Wednesday, Jan 17 at 3:00 PM">
-							</div>
-							<div class="option-input">
-								<input type="text" name="options[]" placeholder="e.g., Thursday, Jan 18 at 1:00 PM">
-							</div>
-							<button type="button" class="btn btn-secondary btn-small" onclick="addOption()">Add Option +</button>
+							<?php
+								// Always show at least 4 option fields, filled with old data or empty
+								$max_options = max(4, count($options));
+								for ($i = 0; $i < $max_options; $i++) {
+									$opt_val = isset($options[$i]) ? $options[$i] : '';
+									echo '<div class="option-input">
+											<input type="text" name="options[]" placeholder="Option '.($i+1).'" value="'. $opt_val .'">
+										  </div>';
+								}
+							?>
+							<button type="button" id="add-option" class="btn btn-secondary btn-small">Add Option +</button>
 						</div>
 					</div>
 
@@ -358,16 +431,21 @@ if (!$currentPoll && !$pollError && isset($_GET['poll'])) {
 	</div>
 
 	<script>
-		function addOption() {
+		function addOption () {
 			const container = document.querySelector('.options-container');
 			const addButton = container.querySelector('button');
 			
 			const newOption = document.createElement('div');
+			const lastInput = container.querySelector('.option-input:last-of-type input');
+			const lastIndex = parseInt(lastInput.getAttribute('placeholder').split(' ').at(-1));
+
 			newOption.className = 'option-input';
-			newOption.innerHTML = '<input type="text" name="options[]" placeholder="e.g., Friday, Jan 19 at 11:00 AM">';
-			
+			newOption.innerHTML = '<input type="text" name="options[]" placeholder="Option '+(lastIndex+1)+'">';
+
 			container.insertBefore(newOption, addButton);
 		}
+
+		document.querySelector('#add-option').addEventListener('click', addOption);
 	</script>
 </body>
 </html>
