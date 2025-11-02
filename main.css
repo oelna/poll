@@ -197,12 +197,18 @@ textarea {
 
 .poll-info .meta > :is(time, a),
 .btn-secondary {
-	font-size: 0.85rem;
-	text-decoration: none;
-	color: #666;
-	background: #ddd;
-	border-radius: 1rem;
-	padding: 0.2em 0.7em;
+        font-size: 0.85rem;
+        text-decoration: none;
+        color: #666;
+        background: #ddd;
+        border-radius: 1rem;
+        padding: 0.2em 0.7em;
+}
+
+.poll-info .meta .meta-author {
+        font-size: 0.85rem;
+        font-style: italic;
+        color: #555;
 }
 
 .poll-info .meta a:hover,
