@@ -31,7 +31,7 @@ body {
 h1 {
 	font-size: 1.4rem;
 	line-height: 1.1;
-	margin-block-end: 1lh;
+	margin-block-end: 0.25lh;
 }
 
 h2 {
@@ -53,7 +53,7 @@ h3 {
 
 .card {
 	margin-block-end: 20px;
-	padding: 1rem;
+	padding: 0rem;
 }
 
 .vote-form {
@@ -97,7 +97,9 @@ label {
 	font-weight: 600;
 }
 
-input[type="text"], textarea {
+input[type="text"],
+input[type="password"],
+textarea {
 	width: 100%;
 	padding: 0.5em;
 	border: 1px solid #bbb;
@@ -106,7 +108,9 @@ input[type="text"], textarea {
 	font: inherit;
 }
 
-input[type="text"]:focus, textarea:focus {
+input[type="text"]:focus,
+input[type="password"]:focus,
+textarea:focus {
 	outline: none;
 	border-color: #000;
 }
@@ -174,8 +178,9 @@ textarea {
 
 .poll-info {
 	display: grid;
-	grid-template-columns: 3fr 2fr;
+	grid-template-columns: 1fr;
 	margin-block-end: 1rem;
+	row-gap: 1rem;
 }
 
 .poll-info p {
@@ -184,7 +189,8 @@ textarea {
 
 .poll-info .meta {
 	display: flex;
-	justify-content: flex-end;
+	justify-content: flex-start;
+	flex-wrap: wrap;
 	align-items: center;
 	gap: 1ch;
 }
@@ -205,8 +211,20 @@ textarea {
 }
 
 .poll-info .desc {
-	grid-column: 1 / 5;
+	grid-column: 1 / 2;
 }
+
+#editDialog {
+	margin-inline: auto;
+	margin-block-start: 2rem;
+	padding: 1rem;
+	border: 1px solid #000;
+}
+
+#editDialog input[type="password"] {
+	margin-block-end: 1rem;
+}
+
 
 .results-summary {
 	margin-block-start: 2rem;
@@ -265,4 +283,26 @@ textarea {
 	margin-block-end: 1rem;
 	background: #eee;
 	padding: 0.5rem;
+}
+
+@media (min-width: 40rem) {
+	html {
+		
+	}
+
+	.card {
+		padding: 1rem;
+	}
+
+	.poll-info {
+		grid-template-columns: 1fr 1fr;
+	}
+
+	.poll-info .desc {
+		grid-column: 1 / 3;
+	}
+
+	.poll-info .meta {
+		justify-content: flex-end;
+	}
 }

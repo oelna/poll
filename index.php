@@ -1,4 +1,11 @@
 <?php
+error_reporting(E_ALL);
+ini_set('display_errors', '1');
+
+$lang = 'en';
+if(substr($_SERVER['HTTP_ACCEPT_LANGUAGE'], 0, 2) === 'de') {
+	$lang = 'de';
+}
 session_start();
 
 // Configuration
@@ -70,7 +77,7 @@ function savePoll($pollId, $pollData) { // atomic vote recording
 		// Rewind, truncate, write
 		ftruncate($fp, 0);
 		rewind($fp);
-		fwrite($fp, json_encode($pollData, JSON_PRETTY_PRINT));
+		fwrite($fp, json_encode($pollData, JSON_PRETTY_PRINT | JSON_HEX_QUOT | JSON_HEX_TAG));
 		fflush($fp); // flush output before releasing lock
 		flock($fp, LOCK_UN); // release lock
 		fclose($fp);
@@ -82,7 +89,9 @@ function savePoll($pollId, $pollData) { // atomic vote recording
 }
 
 function sanitize($input) {
-	return htmlspecialchars(trim($input), ENT_QUOTES, 'UTF-8');
+	// $output = htmlspecialchars(trim($input), ENT_QUOTES, 'UTF-8');
+	$output = trim($input);
+	return $output;
 }
 
 // Handle form submissions
@@ -90,13 +99,35 @@ $message = '';
 $error = '';
 
 // Set up defaults for form repopulation
+$isEditing = false;
+$editPollId = '';
 $title = '';
 $description = '';
 $options = ['', '', '', ''];
 $password = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-	if (isset($_POST['create_poll'])) {
+
+	// (1) Handle EDIT START: show prefilled form after password check
+	if (isset($_POST['start_edit'])) {
+		$editPollId = sanitize($_POST['poll_id']);
+		$edit_password = $_POST['edit_password'];
+		$poll = loadPoll($editPollId);
+		
+		if ($poll && $poll['password'] && password_verify($edit_password, $poll['password'])) {
+			// Prefill form variables for edit
+			$title = $poll['title'];
+			$description = $poll['description'];
+			$options = $poll['options'];
+			$isEditing = true;
+		} else {
+			$error = 'Incorrect password.';
+			$isEditing = false;
+		}
+		
+	}
+
+	if (isset($_POST['create_poll']) || isset($_POST['edit_poll'])) {
 		// Create new poll
 		$title = sanitize($_POST['title']);
 		$description = str_replace("\r", "\n", $_POST['description']);
@@ -110,6 +141,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 		$options_lower = array_map('mb_strtolower', $options);
 		$options = array_intersect_key($options, array_unique($options_lower));
 		$options = array_values($options); // reindex for consistent indices
+
+		$password_plain = isset($_POST['password']) ? trim($_POST['password']) : '';
+		$editPollId = isset($_POST['editing_poll_id']) ? sanitize($_POST['editing_poll_id']) : '';
 
 		// Max length checks
 		if (mb_strlen($title) > 100) {
@@ -127,7 +161,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 		
 		if (empty($title) || count($options) < 1) {
 			$error = 'Title and at least one unique, non-empty option are required.';
-		} else {
+		}
+
+		if (empty($error)) {
 			$pollId = generatePollId();
 			$pollData = [
 				'id' => $pollId,
@@ -264,7 +300,7 @@ if (!$currentPoll && !$pollError && isset($_GET['poll'])) {
 					</div>
 				</div>
 			</div>
-		<?php elseif ($currentPoll): ?>
+		<?php elseif ($currentPoll && !$isEditing): ?>
 			<!-- Display Poll -->
 			<div class="card">
 				<div class="poll-info">
@@ -273,7 +309,11 @@ if (!$currentPoll && !$pollError && isset($_GET['poll'])) {
 					<div class="meta">
 						<time title="Create Date" datetime="<?php echo $currentPoll['created_at']; ?>"><?php echo date('d.m.y', strtotime($currentPoll['created_at'])); ?></time>
 						<a href="<?php echo $site_url . '/' . $currentPoll['id']; ?>">id:<?php echo $currentPoll['id']; ?></a>
-						<a href="/">New Poll +</a>
+						<!-- Edit button if poll has a password -->
+						<?php if ($currentPoll['password']): ?>
+						<button class="btn btn-secondary" onclick="document.querySelector('#editDialog').showModal();">Edit&nbsp;Poll</button>
+						<?php endif; ?>
+						<a href="/">New&nbsp;Poll&nbsp;+</a>
 					</div>
 
 					<div class="desc">
@@ -282,6 +322,20 @@ if (!$currentPoll && !$pollError && isset($_GET['poll'])) {
 						<?php endif; ?>
 					</div>
 				</div>
+
+				<!-- Password dialog for editing -->
+				<dialog id="editDialog">
+					<form method="post" id="editDialogForm">
+						<h2>Edit Poll</h2>
+						
+						<label for="edit_password">Enter password:</label>
+						<input type="password" name="edit_password" id="edit_password" required autofocus>
+						<input type="hidden" name="poll_id" value="<?php echo $currentPoll['id']; ?>">
+						
+						<button type="submit" name="start_edit" class="btn">Continue</button>
+						<button type="button" class="btn" onclick="document.querySelector('#editDialog').close();">Cancel</button>
+					</form>
+				</dialog>
 
 				<!--<div class="poll-url">
 					<strong>Share this poll:</strong> <a href="<?php echo $site_url . '/' . $currentPoll['id']; ?>"><?= $currentPoll['id']; ?></a>
@@ -300,22 +354,22 @@ if (!$currentPoll && !$pollError && isset($_GET['poll'])) {
 				
 				if ($hasVoted): ?>
 					<div class="already-voted">
-						<h2>You have already voted in this poll</h2>
-						<p>Thank you for your participation! You can see the current results below.</p>
+						<h2><?= $lang == 'de' ? 'Du hast bereits abgestimmt' : 'You have already voted in this poll' ?></h2>
+						<p><?= $lang == 'de' ? 'Danke für deine Teilnahme. Unten siehst du das aktuelle Ergebnis.' : 'Thank you for your participation! You can see the current results below.' ?></p>
 					</div>
 				<?php else: ?>
 					<!-- Vote Form -->
-					<h2>Cast your vote</h2>
+					<h2><?= $lang == 'de' ? 'Stimme ab' : 'Cast your vote' ?></h2>
 					<form class="vote-form" method="post">
 						<input type="hidden" name="poll_id" value="<?php echo $currentPoll['id']; ?>">
 						
 						<div class="form-group">
-							<label for="voter_name">Your name:</label>
+							<label for="voter_name"><?= $lang == 'de' ? 'Dein Name' : 'Your name' ?>:</label>
 							<input type="text" id="voter_name" name="voter_name" value="<?php echo sanitize($savedName); ?>" required>
 						</div>
 
 						<div class="form-group">
-							<label>Select your preferred options:</label>
+							<label><?= $lang == 'de' ? 'Wähle deine bevorzugten Optionen' : 'Select your preferred options' ?>:</label>
 							<?php foreach ($currentPoll['options'] as $index => $option): ?>
 								<div class="vote-option">
 									<label>
@@ -326,18 +380,18 @@ if (!$currentPoll && !$pollError && isset($_GET['poll'])) {
 							<?php endforeach; ?>
 						</div>
 
-						<button type="submit" name="vote" class="btn">Submit Vote</button>
+						<button type="submit" name="vote" class="btn"><?= $lang == 'de' ? 'Abstimmen' : 'Submit Vote' ?></button>
 					</form>
 				<?php endif; ?>
 
 				<!-- Results -->
 				<div class="results-summary">
-					<h2>Current Results</h2>
+					<h2><?= $lang == 'de' ? 'Aktuelles Ergebnis' : 'Current Results' ?></h2>
 					<?php if (!empty($currentPoll['votes'])): ?>
 						<table class="voting-table">
 							<thead>
 								<tr>
-									<th class="voter-name-header">Name</th>
+									<th class="voter-name-header"><?= $lang == 'de' ? 'Name' : 'Name' ?></th>
 									<?php foreach ($currentPoll['options'] as $index => $option): ?>
 										<th class="option-header" data-option-index="<?php echo $index; ?>"><?php echo sanitize($option); ?></th>
 									<?php endforeach; ?>
@@ -351,7 +405,11 @@ if (!$currentPoll && !$pollError && isset($_GET['poll'])) {
 											<td class="vote-cell <?php echo in_array($index, $vote['selections']) ? 'vote-yes' : 'vote-no'; ?>" 
 												data-option-index="<?php echo $index; ?>" 
 												data-voter="<?php echo sanitize($vote['name']); ?>">
-												<?php echo in_array($index, $vote['selections']) ? 'Yes' : 'No'; ?>
+												<?php
+													$text_yes = $lang == 'de' ? 'Ja' : 'Yes';
+													$text_no = $lang == 'de' ? 'Nein' : 'No';
+													echo in_array($index, $vote['selections']) ? $text_yes : $text_no;
+												?>
 											</td>
 										<?php endforeach; ?>
 									</tr>
@@ -381,7 +439,7 @@ if (!$currentPoll && !$pollError && isset($_GET['poll'])) {
 							</thead>
 						</table>
 					<?php else: ?>
-						<p>No votes yet. Be the first to vote!</p>
+						<p><?= $lang == 'de' ? 'Noch keine Stimmen. Stimm einfach als erste:r ab!' : 'No votes yet. Be the first to vote!' ?></p>
 					<?php endif; ?>
 				</div>
 			</div>
@@ -389,8 +447,12 @@ if (!$currentPoll && !$pollError && isset($_GET['poll'])) {
 		<?php else: ?>
 			<!-- Create Poll Form -->
 			<div class="card">
-				<h1>Create a New Poll</h1>
+				<h1><?= $isEditing ? 'Edit' : 'Create a New' ?> Poll</h1>
 				<form method="post">
+					<?php if ($isEditing): ?>
+					<input type="hidden" name="editing_poll_id" value="<?php echo $editPollId; ?>">
+					<?php endif; ?>
+
 					<div class="form-group">
 						<label for="title">Poll Title:</label>
 						<input type="text" id="title" name="title" required placeholder="e.g., Team Meeting" value="<?php echo $title; ?>">
@@ -398,12 +460,12 @@ if (!$currentPoll && !$pollError && isset($_GET['poll'])) {
 
 					<div class="form-group">
 						<label for="description">Description (optional):</label>
-						<textarea id="description" name="description" rows="3" placeholder="Additional details about the event …" value="<?php echo $description; ?>"></textarea>
+						<textarea id="description" name="description" rows="3" placeholder="Additional details about the event …"><?php echo $description; ?></textarea>
 					</div>
 
 					<div class="form-group">
 						<label for="password">Password (optional):</label>
-						<input type="text" id="password" name="password" placeholder="" value="<?php echo $password; ?>">
+						<input type="text" id="password" name="password" placeholder="" value="<?= !empty($_POST['edit_password']) ? trim($_POST['edit_password']) : ''; ?>">
 						<small>Setting a password may allow you to edit this poll later.</small>
 					</div>
 
@@ -445,7 +507,7 @@ if (!$currentPoll && !$pollError && isset($_GET['poll'])) {
 			container.insertBefore(newOption, addButton);
 		}
 
-		document.querySelector('#add-option').addEventListener('click', addOption);
+		document.querySelector('#add-option')?.addEventListener('click', addOption);
 	</script>
 </body>
 </html>
