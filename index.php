@@ -104,7 +104,7 @@ $editPollId = '';
 $title = '';
 $description = '';
 $options = ['', '', '', ''];
-$password = '';
+$author = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
@@ -114,75 +114,119 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 		$edit_password = $_POST['edit_password'];
 		$poll = loadPoll($editPollId);
 		
-		if ($poll && $poll['password'] && password_verify($edit_password, $poll['password'])) {
-			// Prefill form variables for edit
-			$title = $poll['title'];
-			$description = $poll['description'];
-			$options = $poll['options'];
-			$isEditing = true;
-		} else {
+                if ($poll && $poll['password'] && password_verify($edit_password, $poll['password'])) {
+                        // Prefill form variables for edit
+                        $title = $poll['title'];
+                        $description = $poll['description'];
+                        $options = $poll['options'];
+                        $author = isset($poll['author']) ? $poll['author'] : '';
+                        $isEditing = true;
+                } else {
 			$error = 'Incorrect password.';
 			$isEditing = false;
 		}
 		
 	}
 
-	if (isset($_POST['create_poll']) || isset($_POST['edit_poll'])) {
-		// Create new poll
-		$title = sanitize($_POST['title']);
-		$description = str_replace("\r", "\n", $_POST['description']);
-		$description = preg_replace("/[\n]+/", "\n", $description); // unify and clean up newlines
-		$description = sanitize($description);
-		$password = !empty($_POST['password']) ? password_hash($_POST['password'], PASSWORD_DEFAULT) : null;
-		$options = array_filter(array_map('sanitize', $_POST['options']));
-		$options = array_filter($options, function($opt) {
-			return strlen(trim($opt)) > 0; // prevent empty poll options
-		});
-		$options_lower = array_map('mb_strtolower', $options);
-		$options = array_intersect_key($options, array_unique($options_lower));
-		$options = array_values($options); // reindex for consistent indices
+        if (isset($_POST['create_poll']) || isset($_POST['edit_poll'])) {
+                // Create new poll or save edits
+                $title = sanitize($_POST['title']);
+                $description = str_replace("\r", "\n", $_POST['description']);
+                $description = preg_replace("/[\n]+/", "\n", $description); // unify and clean up newlines
+                $description = sanitize($description);
+                $author = isset($_POST['author']) ? sanitize($_POST['author']) : '';
+                $passwordInput = isset($_POST['password']) ? trim($_POST['password']) : '';
+                $options = array_filter(array_map('sanitize', $_POST['options']));
+                $options = array_filter($options, function($opt) {
+                        return strlen(trim($opt)) > 0; // prevent empty poll options
+                });
+                $options_lower = array_map('mb_strtolower', $options);
+                $options = array_intersect_key($options, array_unique($options_lower));
+                $options = array_values($options); // reindex for consistent indices
 
-		$password_plain = isset($_POST['password']) ? trim($_POST['password']) : '';
-		$editPollId = isset($_POST['editing_poll_id']) ? sanitize($_POST['editing_poll_id']) : '';
+                $editPollId = isset($_POST['editing_poll_id']) ? sanitize($_POST['editing_poll_id']) : '';
 
-		// Max length checks
-		if (mb_strlen($title) > 100) {
-			$error = 'Poll title must be at most 100 characters.';
-		}
-		if (mb_strlen($description) > 3000) {
-			$error = 'Description must be at most 3000 characters.';
-		}
-		foreach ($options as $option) {
-			if (mb_strlen($option) > 60) {
-				$error = 'Each option must be at most 60 characters.';
-				break;
-			}
-		}
-		
-		if (empty($title) || count($options) < 1) {
-			$error = 'Title and at least one unique, non-empty option are required.';
-		}
+                if (isset($_POST['edit_poll'])) {
+                        $isEditing = true;
+                }
 
-		if (empty($error)) {
-			$pollId = generatePollId();
-			$pollData = [
-				'id' => $pollId,
-				'title' => $title,
-				'description' => $description,
-				'password' => $password,
-				'options' => $options,
-				'votes' => [],
-				'created_at' => date('Y-m-d H:i:s')
-			];
-			
-			if ($pollId !== false && savePoll($pollId, $pollData)) {
-				header("Location: /" . $pollId);
-				exit;
-			} else {
-				$error = 'Failed to create poll. Please try again.';
-			}
-		}
-	} elseif (isset($_POST['vote'])) {
+                // Max length checks
+                if (mb_strlen($title) > 100) {
+                        $error = 'Poll title must be at most 100 characters.';
+                }
+                if (mb_strlen($description) > 3000) {
+                        $error = 'Description must be at most 3000 characters.';
+                }
+                if (mb_strlen($author) > 80) {
+                        $error = 'Author name must be at most 80 characters.';
+                }
+                foreach ($options as $option) {
+                        if (mb_strlen($option) > 60) {
+                                $error = 'Each option must be at most 60 characters.';
+                                break;
+                        }
+                }
+
+                if (empty($title) || count($options) < 1) {
+                        $error = 'Title and at least one unique, non-empty option are required.';
+                }
+
+                if (empty($error)) {
+                        $isEditSubmission = isset($_POST['edit_poll']) && !empty($editPollId);
+
+                        if ($isEditSubmission) {
+                                $pollId = $editPollId;
+                                $existingPoll = loadPoll($pollId);
+
+                                        if ($existingPoll) {
+                                                $pollData = $existingPoll;
+                                                $pollData['id'] = $pollId;
+                                                $pollData['title'] = $title;
+                                                $pollData['description'] = $description;
+                                                $pollData['options'] = $options;
+                                                $pollData['author'] = $author;
+
+                                        if ($passwordInput !== '') {
+                                                $pollData['password'] = password_hash($passwordInput, PASSWORD_DEFAULT);
+                                        } elseif (!array_key_exists('password', $pollData)) {
+                                                $pollData['password'] = null;
+                                        }
+
+                                        if (savePoll($pollId, $pollData)) {
+                                                header("Location: /" . $pollId);
+                                                exit;
+                                        } else {
+                                                $error = 'Failed to update poll. Please try again.';
+                                        }
+                                } else {
+                                        $error = 'Poll not found. Unable to edit.';
+                                }
+                        } else {
+                                $pollId = generatePollId();
+                                if ($pollId === false) {
+                                        $error = 'Failed to create poll. Please try again.';
+                                } else {
+                                        $pollData = [
+                                                'id' => $pollId,
+                                                'title' => $title,
+                                                'description' => $description,
+                                                'author' => $author,
+                                                'password' => $passwordInput !== '' ? password_hash($passwordInput, PASSWORD_DEFAULT) : null,
+                                                'options' => $options,
+                                                'votes' => [],
+                                                'created_at' => date('Y-m-d H:i:s')
+                                        ];
+
+                                        if (savePoll($pollId, $pollData)) {
+                                                header("Location: /" . $pollId);
+                                                exit;
+                                        } else {
+                                                $error = 'Failed to create poll. Please try again.';
+                                        }
+                                }
+                        }
+                }
+        } elseif (isset($_POST['vote'])) {
 		// Submit vote
 		$pollId = sanitize($_POST['poll_id']);
 		if (!isValidPollId($pollId)) {
@@ -306,11 +350,14 @@ if (!$currentPoll && !$pollError && isset($_GET['poll'])) {
 				<div class="poll-info">
 					<h1><a href="<?php echo $site_url . '/' . $currentPoll['id']; ?>"><?php echo sanitize($currentPoll['title']); ?></a></h1>
 
-					<div class="meta">
-						<time title="Create Date" datetime="<?php echo $currentPoll['created_at']; ?>"><?php echo date('d.m.y', strtotime($currentPoll['created_at'])); ?></time>
-						<a href="<?php echo $site_url . '/' . $currentPoll['id']; ?>">id:<?php echo $currentPoll['id']; ?></a>
-						<!-- Edit button if poll has a password -->
-						<?php if ($currentPoll['password']): ?>
+                                        <div class="meta">
+                                                <time title="Create Date" datetime="<?php echo $currentPoll['created_at']; ?>"><?php echo date('d.m.y', strtotime($currentPoll['created_at'])); ?></time>
+                                                <?php if (!empty($currentPoll['author'])): ?>
+                                                <span class="meta-author"><?php echo ($lang == 'de' ? 'von' : 'by'); ?> <?php echo sanitize($currentPoll['author']); ?></span>
+                                                <?php endif; ?>
+                                                <a href="<?php echo $site_url . '/' . $currentPoll['id']; ?>">id:<?php echo $currentPoll['id']; ?></a>
+                                                <!-- Edit button if poll has a password -->
+                                                <?php if ($currentPoll['password']): ?>
 						<button class="btn btn-secondary" onclick="document.querySelector('#editDialog').showModal();">Edit&nbsp;Poll</button>
 						<?php endif; ?>
 						<a href="/">New&nbsp;Poll&nbsp;+</a>
@@ -458,16 +505,21 @@ if (!$currentPoll && !$pollError && isset($_GET['poll'])) {
 						<input type="text" id="title" name="title" required placeholder="e.g., Team Meeting" value="<?php echo $title; ?>">
 					</div>
 
-					<div class="form-group">
-						<label for="description">Description (optional):</label>
-						<textarea id="description" name="description" rows="3" placeholder="Additional details about the event …"><?php echo $description; ?></textarea>
-					</div>
+                                        <div class="form-group">
+                                                <label for="description">Description (optional):</label>
+                                                <textarea id="description" name="description" rows="3" placeholder="Additional details about the event …"><?php echo $description; ?></textarea>
+                                        </div>
 
-					<div class="form-group">
-						<label for="password">Password (optional):</label>
-						<input type="text" id="password" name="password" placeholder="" value="<?= !empty($_POST['edit_password']) ? trim($_POST['edit_password']) : ''; ?>">
-						<small>Setting a password may allow you to edit this poll later.</small>
-					</div>
+                                        <div class="form-group">
+                                                <label for="author">Author (optional):</label>
+                                                <input type="text" id="author" name="author" placeholder="e.g., Alex" value="<?php echo htmlspecialchars($author, ENT_QUOTES, 'UTF-8'); ?>">
+                                        </div>
+
+                                        <div class="form-group">
+                                                <label for="password">Password (optional):</label>
+                                                <input type="text" id="password" name="password" placeholder="" value="<?= !empty($_POST['edit_password']) ? trim($_POST['edit_password']) : ''; ?>">
+                                                <small>Setting a password may allow you to edit this poll later.</small>
+                                        </div>
 
 					<div class="form-group">
 						<label>Options:</label>
@@ -486,9 +538,9 @@ if (!$currentPoll && !$pollError && isset($_GET['poll'])) {
 						</div>
 					</div>
 
-					<button type="submit" name="create_poll" class="btn">Create Poll</button>
-				</form>
-			</div>
+                                        <button type="submit" name="<?php echo $isEditing ? 'edit_poll' : 'create_poll'; ?>" class="btn"><?php echo $isEditing ? 'Save Changes' : 'Create Poll'; ?></button>
+                                </form>
+                        </div>
 		<?php endif; ?>
 	</div>
 
