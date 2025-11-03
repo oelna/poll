@@ -105,6 +105,7 @@ $title = '';
 $description = '';
 $options = ['', '', '', ''];
 $author = '';
+$exclusive = false;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
@@ -120,6 +121,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $description = $poll['description'];
                         $options = $poll['options'];
                         $author = isset($poll['author']) ? $poll['author'] : '';
+                        $exclusive = !empty($poll['exclusive']);
                         $isEditing = true;
                 } else {
 			$error = 'Incorrect password.';
@@ -136,6 +138,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $description = sanitize($description);
                 $author = isset($_POST['author']) ? sanitize($_POST['author']) : '';
                 $passwordInput = isset($_POST['password']) ? trim($_POST['password']) : '';
+                if (isset($_POST['create_poll'])) {
+                        $exclusive = isset($_POST['exclusive_options']);
+                }
                 $options = array_filter(array_map('sanitize', $_POST['options']));
                 $options = array_filter($options, function($opt) {
                         return strlen(trim($opt)) > 0; // prevent empty poll options
@@ -180,6 +185,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                                         if ($existingPoll) {
                                                 $pollData = $existingPoll;
+                                                if (!array_key_exists('exclusive', $pollData)) {
+                                                        $pollData['exclusive'] = false;
+                                                }
                                                 $pollData['id'] = $pollId;
                                                 $pollData['title'] = $title;
                                                 $pollData['description'] = $description;
@@ -213,6 +221,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                 'author' => $author,
                                                 'password' => $passwordInput !== '' ? password_hash($passwordInput, PASSWORD_DEFAULT) : null,
                                                 'options' => $options,
+                                                'exclusive' => $exclusive,
                                                 'votes' => [],
                                                 'created_at' => date('Y-m-d H:i:s')
                                         ];
@@ -236,24 +245,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 		if (mb_strlen($voterName) > 40) {
 			$error = 'Your name must be at most 40 characters.';
 		}
-		$votes = $_POST['votes'] ?? [];
+                $votes = $_POST['votes'] ?? [];
 		
 		if (empty($voterName)) {
 			$error = 'Please enter your name.';
 		} else {
-			$poll = loadPoll($pollId);
-			if ($poll) {
-				// Remove any existing vote from this voter
-				$poll['votes'] = array_filter($poll['votes'], function($vote) use ($voterName) {
-					return $vote['name'] !== $voterName;
-				});
-				
-				// Add new vote
-				$poll['votes'][] = [
-					'name' => $voterName,
-					'selections' => $votes,
-					'voted_at' => date('Y-m-d H:i:s')
-				];
+                        $poll = loadPoll($pollId);
+                        if ($poll) {
+                                $voteSelections = is_array($votes) ? $votes : [$votes];
+                                $voteSelections = array_map('intval', $voteSelections);
+                                $voteSelections = array_values(array_filter($voteSelections, function($selection) use ($poll) {
+                                        return array_key_exists($selection, $poll['options']);
+                                }));
+
+                                if (!empty($poll['exclusive'])) {
+                                        $voteSelections = array_slice($voteSelections, 0, 1);
+                                } else {
+                                        $voteSelections = array_values(array_unique($voteSelections));
+                                }
+
+                                // Remove any existing vote from this voter
+                                $poll['votes'] = array_filter($poll['votes'], function($vote) use ($voterName) {
+                                        return $vote['name'] !== $voterName;
+                                });
+
+                                // Add new vote
+                                $poll['votes'][] = [
+                                        'name' => $voterName,
+                                        'selections' => $voteSelections,
+                                        'voted_at' => date('Y-m-d H:i:s')
+                                ];
 				
 				if (savePoll($pollId, $poll)) {
 					// Set cookie to remember user's vote
@@ -355,6 +376,9 @@ if (!$currentPoll && !$pollError && isset($_GET['poll'])) {
                                                 <?php if (!empty($currentPoll['author'])): ?>
                                                 <span class="meta-author"><?php echo ($lang == 'de' ? 'von' : 'by'); ?> <?php echo sanitize($currentPoll['author']); ?></span>
                                                 <?php endif; ?>
+                                                <?php if (!empty($currentPoll['exclusive'])): ?>
+                                                <span class="meta-exclusive"><?= $lang == 'de' ? 'Nur eine Auswahl' : 'Single-choice'; ?></span>
+                                                <?php endif; ?>
                                                 <a href="<?php echo $site_url . '/' . $currentPoll['id']; ?>">id:<?php echo $currentPoll['id']; ?></a>
                                                 <!-- Edit button if poll has a password -->
                                                 <?php if ($currentPoll['password']): ?>
@@ -407,28 +431,32 @@ if (!$currentPoll && !$pollError && isset($_GET['poll'])) {
 				<?php else: ?>
 					<!-- Vote Form -->
 					<h2><?= $lang == 'de' ? 'Stimme ab' : 'Cast your vote' ?></h2>
-					<form class="vote-form" method="post">
-						<input type="hidden" name="poll_id" value="<?php echo $currentPoll['id']; ?>">
-						
-						<div class="form-group">
-							<label for="voter_name"><?= $lang == 'de' ? 'Dein Name' : 'Your name' ?>:</label>
-							<input type="text" id="voter_name" name="voter_name" value="<?php echo sanitize($savedName); ?>" required>
-						</div>
+                                        <?php $isExclusivePoll = !empty($currentPoll['exclusive']); ?>
+                                        <form class="vote-form" method="post">
+                                                <input type="hidden" name="poll_id" value="<?php echo $currentPoll['id']; ?>">
 
-						<div class="form-group">
-							<label><?= $lang == 'de' ? 'Wähle deine bevorzugten Optionen' : 'Select your preferred options' ?>:</label>
-							<?php foreach ($currentPoll['options'] as $index => $option): ?>
-								<div class="vote-option">
-									<label>
-										<input type="checkbox" name="votes[]" value="<?php echo $index; ?>">
-										<?php echo sanitize($option); ?>
-									</label>
-								</div>
-							<?php endforeach; ?>
-						</div>
+                                                <div class="form-group">
+                                                        <label for="voter_name"><?= $lang == 'de' ? 'Dein Name' : 'Your name' ?>:</label>
+                                                        <input type="text" id="voter_name" name="voter_name" value="<?php echo sanitize($savedName); ?>" required>
+                                                </div>
 
-						<button type="submit" name="vote" class="btn"><?= $lang == 'de' ? 'Abstimmen' : 'Submit Vote' ?></button>
-					</form>
+                                                <div class="form-group">
+                                                        <label><?= $lang == 'de' ? 'Wähle deine bevorzugten Optionen' : 'Select your preferred options' ?>:</label>
+                                                        <?php foreach ($currentPoll['options'] as $index => $option): ?>
+                                                                <div class="vote-option">
+                                                                        <label>
+                                                                                <input type="<?php echo $isExclusivePoll ? 'radio' : 'checkbox'; ?>" name="<?php echo $isExclusivePoll ? 'votes' : 'votes[]'; ?>" value="<?php echo $index; ?>">
+                                                                                <?php echo sanitize($option); ?>
+                                                                        </label>
+                                                                </div>
+                                                        <?php endforeach; ?>
+                                                        <?php if ($isExclusivePoll): ?>
+                                                        <small class="exclusive-note"><?= $lang == 'de' ? 'Du kannst nur eine Option auswählen.' : 'You can choose only one option in this poll.' ?></small>
+                                                        <?php endif; ?>
+                                                </div>
+
+                                                <button type="submit" name="vote" class="btn"><?= $lang == 'de' ? 'Abstimmen' : 'Submit Vote' ?></button>
+                                        </form>
 				<?php endif; ?>
 
 				<!-- Results -->
@@ -521,9 +549,19 @@ if (!$currentPoll && !$pollError && isset($_GET['poll'])) {
                                                 <small>Setting a password may allow you to edit this poll later.</small>
                                         </div>
 
-					<div class="form-group">
-						<label>Options:</label>
-						<div class="options-container">
+                                        <?php if (!$isEditing): ?>
+                                        <div class="form-group checkbox-group">
+                                                <label class="checkbox-label">
+                                                        <input type="checkbox" name="exclusive_options" <?php echo $exclusive ? 'checked' : ''; ?>>
+                                                        <span><?= $lang == 'de' ? 'Nur eine Option pro Teilnehmer erlauben' : 'Allow only one option per participant'; ?></span>
+                                                </label>
+                                                <small><?= $lang == 'de' ? 'Aktiviere dies, wenn jede:r nur eine Option wählen darf.' : 'Enable this to limit each voter to a single choice.' ?></small>
+                                        </div>
+                                        <?php endif; ?>
+
+                                        <div class="form-group">
+                                                <label>Options:</label>
+                                                <div class="options-container">
 							<?php
 								// Always show at least 4 option fields, filled with old data or empty
 								$max_options = max(4, count($options));
