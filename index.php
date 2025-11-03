@@ -115,178 +115,178 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 		$edit_password = $_POST['edit_password'];
 		$poll = loadPoll($editPollId);
 		
-                if ($poll && $poll['password'] && password_verify($edit_password, $poll['password'])) {
-                        // Prefill form variables for edit
-                        $title = $poll['title'];
-                        $description = $poll['description'];
-                        $options = $poll['options'];
-                        $author = isset($poll['author']) ? $poll['author'] : '';
-                        $exclusive = !empty($poll['exclusive']);
-                        $isEditing = true;
-                } else {
+		if ($poll && $poll['password'] && password_verify($edit_password, $poll['password'])) {
+						// Prefill form variables for edit
+			$title = $poll['title'];
+			$description = $poll['description'];
+			$options = $poll['options'];
+			$author = isset($poll['author']) ? $poll['author'] : '';
+			$exclusive = !empty($poll['exclusive']);
+			$isEditing = true;
+		} else {
 			$error = 'Incorrect password.';
 			$isEditing = false;
 		}
 		
 	}
 
-        if (isset($_POST['create_poll']) || isset($_POST['edit_poll'])) {
-                // Create new poll or save edits
-                $title = sanitize($_POST['title']);
-                $description = str_replace("\r", "\n", $_POST['description']);
-                $description = preg_replace("/[\n]+/", "\n", $description); // unify and clean up newlines
-                $description = sanitize($description);
-                $author = isset($_POST['author']) ? sanitize($_POST['author']) : '';
-                $passwordInput = isset($_POST['password']) ? trim($_POST['password']) : '';
-                if (isset($_POST['create_poll'])) {
-                        $exclusive = isset($_POST['exclusive_options']);
-                }
-                $options = array_filter(array_map('sanitize', $_POST['options']));
-                $options = array_filter($options, function($opt) {
-                        return strlen(trim($opt)) > 0; // prevent empty poll options
-                });
-                $options_lower = array_map('mb_strtolower', $options);
-                $options = array_intersect_key($options, array_unique($options_lower));
-                $options = array_values($options); // reindex for consistent indices
+	if (isset($_POST['create_poll']) || isset($_POST['edit_poll'])) {
+				// Create new poll or save edits
+		$title = sanitize($_POST['title']);
+		$description = str_replace("\r", "\n", $_POST['description']);
+				$description = preg_replace("/[\n]+/", "\n", $description); // unify and clean up newlines
+				$description = sanitize($description);
+				$author = isset($_POST['author']) ? sanitize($_POST['author']) : '';
+				$passwordInput = isset($_POST['password']) ? trim($_POST['password']) : '';
+				if (isset($_POST['create_poll'])) {
+					$exclusive = isset($_POST['exclusive_options']);
+				}
+				$options = array_filter(array_map('sanitize', $_POST['options']));
+				$options = array_filter($options, function($opt) {
+						return strlen(trim($opt)) > 0; // prevent empty poll options
+					});
+				$options_lower = array_map('mb_strtolower', $options);
+				$options = array_intersect_key($options, array_unique($options_lower));
+				$options = array_values($options); // reindex for consistent indices
 
-                $editPollId = isset($_POST['editing_poll_id']) ? sanitize($_POST['editing_poll_id']) : '';
+				$editPollId = isset($_POST['editing_poll_id']) ? sanitize($_POST['editing_poll_id']) : '';
 
-                if (isset($_POST['edit_poll'])) {
-                        $isEditing = true;
-                }
+				if (isset($_POST['edit_poll'])) {
+					$isEditing = true;
+				}
 
-                // Max length checks
-                if (mb_strlen($title) > 100) {
-                        $error = 'Poll title must be at most 100 characters.';
-                }
-                if (mb_strlen($description) > 3000) {
-                        $error = 'Description must be at most 3000 characters.';
-                }
-                if (mb_strlen($author) > 80) {
-                        $error = 'Author name must be at most 80 characters.';
-                }
-                foreach ($options as $option) {
-                        if (mb_strlen($option) > 60) {
-                                $error = 'Each option must be at most 60 characters.';
-                                break;
-                        }
-                }
-
-                if (empty($title) || count($options) < 1) {
-                        $error = 'Title and at least one unique, non-empty option are required.';
-                }
-
-                if (empty($error)) {
-                        $isEditSubmission = isset($_POST['edit_poll']) && !empty($editPollId);
-
-                        if ($isEditSubmission) {
-                                $pollId = $editPollId;
-                                $existingPoll = loadPoll($pollId);
-
-                                        if ($existingPoll) {
-                                                $pollData = $existingPoll;
-                                                if (!array_key_exists('exclusive', $pollData)) {
-                                                        $pollData['exclusive'] = false;
-                                                }
-                                                $pollData['id'] = $pollId;
-                                                $pollData['title'] = $title;
-                                                $pollData['description'] = $description;
-                                                $pollData['options'] = $options;
-                                                $pollData['author'] = $author;
-
-                                        if ($passwordInput !== '') {
-                                                $pollData['password'] = password_hash($passwordInput, PASSWORD_DEFAULT);
-                                        } elseif (!array_key_exists('password', $pollData)) {
-                                                $pollData['password'] = null;
-                                        }
-
-                                        if (savePoll($pollId, $pollData)) {
-                                                header("Location: /" . $pollId);
-                                                exit;
-                                        } else {
-                                                $error = 'Failed to update poll. Please try again.';
-                                        }
-                                } else {
-                                        $error = 'Poll not found. Unable to edit.';
-                                }
-                        } else {
-                                $pollId = generatePollId();
-                                if ($pollId === false) {
-                                        $error = 'Failed to create poll. Please try again.';
-                                } else {
-                                        $pollData = [
-                                                'id' => $pollId,
-                                                'title' => $title,
-                                                'description' => $description,
-                                                'author' => $author,
-                                                'password' => $passwordInput !== '' ? password_hash($passwordInput, PASSWORD_DEFAULT) : null,
-                                                'options' => $options,
-                                                'exclusive' => $exclusive,
-                                                'votes' => [],
-                                                'created_at' => date('Y-m-d H:i:s')
-                                        ];
-
-                                        if (savePoll($pollId, $pollData)) {
-                                                header("Location: /" . $pollId);
-                                                exit;
-                                        } else {
-                                                $error = 'Failed to create poll. Please try again.';
-                                        }
-                                }
-                        }
-                }
-        } elseif (isset($_POST['vote'])) {
-		// Submit vote
-		$pollId = sanitize($_POST['poll_id']);
-		if (!isValidPollId($pollId)) {
-			$error = 'Invalid poll ID provided.';
-		}
-		$voterName = sanitize($_POST['voter_name']);
-		if (mb_strlen($voterName) > 40) {
-			$error = 'Your name must be at most 40 characters.';
-		}
-                $votes = $_POST['votes'] ?? [];
-		
-		if (empty($voterName)) {
-			$error = 'Please enter your name.';
-		} else {
-                        $poll = loadPoll($pollId);
-                        if ($poll) {
-                                $voteSelections = is_array($votes) ? $votes : [$votes];
-                                $voteSelections = array_map('intval', $voteSelections);
-                                $voteSelections = array_values(array_filter($voteSelections, function($selection) use ($poll) {
-                                        return array_key_exists($selection, $poll['options']);
-                                }));
-
-                                if (!empty($poll['exclusive'])) {
-                                        $voteSelections = array_slice($voteSelections, 0, 1);
-                                } else {
-                                        $voteSelections = array_values(array_unique($voteSelections));
-                                }
-
-                                // Remove any existing vote from this voter
-                                $poll['votes'] = array_filter($poll['votes'], function($vote) use ($voterName) {
-                                        return $vote['name'] !== $voterName;
-                                });
-
-                                // Add new vote
-                                $poll['votes'][] = [
-                                        'name' => $voterName,
-                                        'selections' => $voteSelections,
-                                        'voted_at' => date('Y-m-d H:i:s')
-                                ];
-				
-				if (savePoll($pollId, $poll)) {
-					// Set cookie to remember user's vote
-					$userData = isset($_COOKIE['poll_user_data']) ? json_decode($_COOKIE['poll_user_data'], true) : [];
-					if (!is_array($userData)) $userData = [];
-					
-					$userData['name'] = $voterName;
-					if (!isset($userData['voted_polls'])) $userData['voted_polls'] = [];
-					if (!in_array($pollId, $userData['voted_polls'])) {
-						$userData['voted_polls'][] = $pollId;
+				// Max length checks
+				if (mb_strlen($title) > 100) {
+					$error = 'Poll title must be at most 100 characters.';
+				}
+				if (mb_strlen($description) > 3000) {
+					$error = 'Description must be at most 3000 characters.';
+				}
+				if (mb_strlen($author) > 80) {
+					$error = 'Author name must be at most 80 characters.';
+				}
+				foreach ($options as $option) {
+					if (mb_strlen($option) > 60) {
+						$error = 'Each option must be at most 60 characters.';
+						break;
 					}
-					
+				}
+
+				if (empty($title) || count($options) < 1) {
+					$error = 'Title and at least one unique, non-empty option are required.';
+				}
+
+				if (empty($error)) {
+					$isEditSubmission = isset($_POST['edit_poll']) && !empty($editPollId);
+
+					if ($isEditSubmission) {
+						$pollId = $editPollId;
+						$existingPoll = loadPoll($pollId);
+
+						if ($existingPoll) {
+							$pollData = $existingPoll;
+							if (!array_key_exists('exclusive', $pollData)) {
+								$pollData['exclusive'] = false;
+							}
+							$pollData['id'] = $pollId;
+							$pollData['title'] = $title;
+							$pollData['description'] = $description;
+							$pollData['options'] = $options;
+							$pollData['author'] = $author;
+
+							if ($passwordInput !== '') {
+								$pollData['password'] = password_hash($passwordInput, PASSWORD_DEFAULT);
+							} elseif (!array_key_exists('password', $pollData)) {
+								$pollData['password'] = null;
+							}
+
+							if (savePoll($pollId, $pollData)) {
+								header("Location: /" . $pollId);
+								exit;
+							} else {
+								$error = 'Failed to update poll. Please try again.';
+							}
+						} else {
+							$error = 'Poll not found. Unable to edit.';
+						}
+					} else {
+						$pollId = generatePollId();
+						if ($pollId === false) {
+							$error = 'Failed to create poll. Please try again.';
+						} else {
+							$pollData = [
+								'id' => $pollId,
+								'title' => $title,
+								'description' => $description,
+								'author' => $author,
+								'password' => $passwordInput !== '' ? password_hash($passwordInput, PASSWORD_DEFAULT) : null,
+								'options' => $options,
+								'exclusive' => $exclusive,
+								'votes' => [],
+								'created_at' => date('Y-m-d H:i:s')
+							];
+
+							if (savePoll($pollId, $pollData)) {
+								header("Location: /" . $pollId);
+								exit;
+							} else {
+								$error = 'Failed to create poll. Please try again.';
+							}
+						}
+					}
+				}
+			} elseif (isset($_POST['vote'])) {
+		// Submit vote
+				$pollId = sanitize($_POST['poll_id']);
+				if (!isValidPollId($pollId)) {
+					$error = 'Invalid poll ID provided.';
+				}
+				$voterName = sanitize($_POST['voter_name']);
+				if (mb_strlen($voterName) > 40) {
+					$error = 'Your name must be at most 40 characters.';
+				}
+				$votes = $_POST['votes'] ?? [];
+
+				if (empty($voterName)) {
+					$error = 'Please enter your name.';
+				} else {
+					$poll = loadPoll($pollId);
+					if ($poll) {
+						$voteSelections = is_array($votes) ? $votes : [$votes];
+						$voteSelections = array_map('intval', $voteSelections);
+						$voteSelections = array_values(array_filter($voteSelections, function($selection) use ($poll) {
+							return array_key_exists($selection, $poll['options']);
+						}));
+
+						if (!empty($poll['exclusive'])) {
+							$voteSelections = array_slice($voteSelections, 0, 1);
+						} else {
+							$voteSelections = array_values(array_unique($voteSelections));
+						}
+
+								// Remove any existing vote from this voter
+						$poll['votes'] = array_filter($poll['votes'], function($vote) use ($voterName) {
+							return $vote['name'] !== $voterName;
+						});
+
+								// Add new vote
+						$poll['votes'][] = [
+							'name' => $voterName,
+							'selections' => $voteSelections,
+							'voted_at' => date('Y-m-d H:i:s')
+						];
+
+						if (savePoll($pollId, $poll)) {
+					// Set cookie to remember user's vote
+							$userData = isset($_COOKIE['poll_user_data']) ? json_decode($_COOKIE['poll_user_data'], true) : [];
+							if (!is_array($userData)) $userData = [];
+
+							$userData['name'] = $voterName;
+							if (!isset($userData['voted_polls'])) $userData['voted_polls'] = [];
+							if (!in_array($pollId, $userData['voted_polls'])) {
+								$userData['voted_polls'][] = $pollId;
+							}
+
 					setcookie('poll_user_data', json_encode($userData), time() + (86400 * 30), '/'); // 30 days
 					
 					$message = 'Your vote has been recorded!';
@@ -369,27 +369,26 @@ if (!$currentPoll && !$pollError && isset($_GET['poll'])) {
 			<!-- Display Poll -->
 			<div class="card">
 				<div class="poll-info">
-					<h1><a href="<?php echo $site_url . '/' . $currentPoll['id']; ?>"><?php echo sanitize($currentPoll['title']); ?></a></h1>
+					<h1><a href="<?php echo $site_url . '/' . $currentPoll['id']; ?>"><?php echo sanitize($currentPoll['title']); ?></a>
+						<?php if (!empty($currentPoll['author'])): ?>
+							<span class="meta-author"><?php echo ($lang == 'de' ? 'von' : 'by'); ?> <?php echo sanitize($currentPoll['author']); ?></span>
+						<?php endif; ?>
+					</h1>
 
-                                        <div class="meta">
-                                                <time title="Create Date" datetime="<?php echo $currentPoll['created_at']; ?>"><?php echo date('d.m.y', strtotime($currentPoll['created_at'])); ?></time>
-                                                <?php if (!empty($currentPoll['author'])): ?>
-                                                <span class="meta-author"><?php echo ($lang == 'de' ? 'von' : 'by'); ?> <?php echo sanitize($currentPoll['author']); ?></span>
-                                                <?php endif; ?>
-                                                <?php if (!empty($currentPoll['exclusive'])): ?>
-                                                <span class="meta-exclusive"><?= $lang == 'de' ? 'Nur eine Auswahl' : 'Single-choice'; ?></span>
-                                                <?php endif; ?>
-                                                <a href="<?php echo $site_url . '/' . $currentPoll['id']; ?>">id:<?php echo $currentPoll['id']; ?></a>
-                                                <!-- Edit button if poll has a password -->
-                                                <?php if ($currentPoll['password']): ?>
-						<button class="btn btn-secondary" onclick="document.querySelector('#editDialog').showModal();">Edit&nbsp;Poll</button>
+					<div class="meta">
+						<time title="Create Date" datetime="<?php echo $currentPoll['created_at']; ?>"><?php echo date('d.m.y', strtotime($currentPoll['created_at'])); ?></time>
+
+						<a href="<?php echo $site_url . '/' . $currentPoll['id']; ?>">id:<?php echo $currentPoll['id']; ?></a>
+						<!-- Edit button if poll has a password -->
+						<?php if ($currentPoll['password']): ?>
+							<button class="btn btn-secondary" onclick="document.querySelector('#editDialog').showModal();">Edit&nbsp;Poll</button>
 						<?php endif; ?>
 						<a href="/">New&nbsp;Poll&nbsp;+</a>
 					</div>
 
 					<div class="desc">
 						<?php if ($currentPoll['description']): ?>
-						<p><?php echo implode('</p><p>', explode("\n", $currentPoll['description'])); ?></p>
+							<p><?php echo implode('</p><p>', explode("\n", $currentPoll['description'])); ?></p>
 						<?php endif; ?>
 					</div>
 				</div>
@@ -431,32 +430,32 @@ if (!$currentPoll && !$pollError && isset($_GET['poll'])) {
 				<?php else: ?>
 					<!-- Vote Form -->
 					<h2><?= $lang == 'de' ? 'Stimme ab' : 'Cast your vote' ?></h2>
-                                        <?php $isExclusivePoll = !empty($currentPoll['exclusive']); ?>
-                                        <form class="vote-form" method="post">
-                                                <input type="hidden" name="poll_id" value="<?php echo $currentPoll['id']; ?>">
+					<?php $isExclusivePoll = !empty($currentPoll['exclusive']); ?>
+					<form class="vote-form" method="post">
+						<input type="hidden" name="poll_id" value="<?php echo $currentPoll['id']; ?>">
 
-                                                <div class="form-group">
-                                                        <label for="voter_name"><?= $lang == 'de' ? 'Dein Name' : 'Your name' ?>:</label>
-                                                        <input type="text" id="voter_name" name="voter_name" value="<?php echo sanitize($savedName); ?>" required>
-                                                </div>
+						<div class="form-group">
+							<label for="voter_name"><?= $lang == 'de' ? 'Dein Name' : 'Your name' ?>:</label>
+							<input type="text" id="voter_name" name="voter_name" value="<?php echo sanitize($savedName); ?>" required>
+						</div>
 
-                                                <div class="form-group">
-                                                        <label><?= $lang == 'de' ? 'Wähle deine bevorzugten Optionen' : 'Select your preferred options' ?>:</label>
-                                                        <?php foreach ($currentPoll['options'] as $index => $option): ?>
-                                                                <div class="vote-option">
-                                                                        <label>
-                                                                                <input type="<?php echo $isExclusivePoll ? 'radio' : 'checkbox'; ?>" name="<?php echo $isExclusivePoll ? 'votes' : 'votes[]'; ?>" value="<?php echo $index; ?>">
-                                                                                <?php echo sanitize($option); ?>
-                                                                        </label>
-                                                                </div>
-                                                        <?php endforeach; ?>
-                                                        <?php if ($isExclusivePoll): ?>
-                                                        <small class="exclusive-note"><?= $lang == 'de' ? 'Du kannst nur eine Option auswählen.' : 'You can choose only one option in this poll.' ?></small>
-                                                        <?php endif; ?>
-                                                </div>
+						<div class="form-group">
+							<label><?= $lang == 'de' ? 'Wähle deine bevorzugten Optionen' : 'Select your preferred options' ?>:</label>
+							<?php foreach ($currentPoll['options'] as $index => $option): ?>
+								<div class="vote-option">
+									<label>
+										<input type="<?php echo $isExclusivePoll ? 'radio' : 'checkbox'; ?>" name="<?php echo $isExclusivePoll ? 'votes' : 'votes[]'; ?>" value="<?php echo $index; ?>">
+										<?php echo sanitize($option); ?>
+									</label>
+								</div>
+							<?php endforeach; ?>
+							<?php if ($isExclusivePoll): ?>
+								<small class="exclusive-note"><?= $lang == 'de' ? 'Du kannst nur eine Option auswählen.' : 'You can choose only one option in this poll.' ?></small>
+							<?php endif; ?>
+						</div>
 
-                                                <button type="submit" name="vote" class="btn"><?= $lang == 'de' ? 'Abstimmen' : 'Submit Vote' ?></button>
-                                        </form>
+						<button type="submit" name="vote" class="btn"><?= $lang == 'de' ? 'Abstimmen' : 'Submit Vote' ?></button>
+					</form>
 				<?php endif; ?>
 
 				<!-- Results -->
@@ -481,9 +480,9 @@ if (!$currentPoll && !$pollError && isset($_GET['poll'])) {
 												data-option-index="<?php echo $index; ?>" 
 												data-voter="<?php echo sanitize($vote['name']); ?>">
 												<?php
-													$text_yes = $lang == 'de' ? 'Ja' : 'Yes';
-													$text_no = $lang == 'de' ? 'Nein' : 'No';
-													echo in_array($index, $vote['selections']) ? $text_yes : $text_no;
+												$text_yes = $lang == 'de' ? 'Ja' : 'Yes';
+												$text_no = $lang == 'de' ? 'Nein' : 'No';
+												echo in_array($index, $vote['selections']) ? $text_yes : $text_no;
 												?>
 											</td>
 										<?php endforeach; ?>
@@ -494,7 +493,7 @@ if (!$currentPoll && !$pollError && isset($_GET['poll'])) {
 								<tr class="voting-table-footer">
 									<th>Total</th>
 									<?php
-										$totalVotes = count($currentPoll['votes']);
+									$totalVotes = count($currentPoll['votes']);
 										$maxVotes = max($optionCounts) ?: 1; // Prevent division by zero
 										$highestVoteCount = max($optionCounts);
 										
@@ -510,94 +509,159 @@ if (!$currentPoll && !$pollError && isset($_GET['poll'])) {
 											<?php
 										}
 										?>
-								</tr>
-							</thead>
-						</table>
-					<?php else: ?>
-						<p><?= $lang == 'de' ? 'Noch keine Stimmen. Stimm einfach als erste:r ab!' : 'No votes yet. Be the first to vote!' ?></p>
-					<?php endif; ?>
-				</div>
-			</div>
-
-		<?php else: ?>
-			<!-- Create Poll Form -->
-			<div class="card">
-				<h1><?= $isEditing ? 'Edit' : 'Create a New' ?> Poll</h1>
-				<form method="post">
-					<?php if ($isEditing): ?>
-					<input type="hidden" name="editing_poll_id" value="<?php echo $editPollId; ?>">
-					<?php endif; ?>
-
-					<div class="form-group">
-						<label for="title">Poll Title:</label>
-						<input type="text" id="title" name="title" required placeholder="e.g., Team Meeting" value="<?php echo $title; ?>">
+									</tr>
+								</thead>
+							</table>
+						<?php else: ?>
+							<p><?= $lang == 'de' ? 'Noch keine Stimmen. Stimm einfach als erste:r ab!' : 'No votes yet. Be the first to vote!' ?></p>
+						<?php endif; ?>
 					</div>
+				</div>
 
-                                        <div class="form-group">
-                                                <label for="description">Description (optional):</label>
-                                                <textarea id="description" name="description" rows="3" placeholder="Additional details about the event …"><?php echo $description; ?></textarea>
-                                        </div>
+			<?php else: ?>
+				<!-- Create Poll Form -->
+				<div class="card">
+					<h1><?= $isEditing ? 'Edit' : 'Create a New' ?> Poll</h1>
+					<form method="post">
+						<?php if ($isEditing): ?>
+							<input type="hidden" name="editing_poll_id" value="<?php echo $editPollId; ?>">
+						<?php endif; ?>
 
-                                        <div class="form-group">
-                                                <label for="author">Author (optional):</label>
-                                                <input type="text" id="author" name="author" placeholder="e.g., Alex" value="<?php echo htmlspecialchars($author, ENT_QUOTES, 'UTF-8'); ?>">
-                                        </div>
+						<div class="form-group">
+							<label for="title">Poll Title:</label>
+							<input type="text" id="title" name="title" required placeholder="e.g., Team Meeting" value="<?php echo $title; ?>">
+						</div>
 
-                                        <div class="form-group">
-                                                <label for="password">Password (optional):</label>
-                                                <input type="text" id="password" name="password" placeholder="" value="<?= !empty($_POST['edit_password']) ? trim($_POST['edit_password']) : ''; ?>">
-                                                <small>Setting a password may allow you to edit this poll later.</small>
-                                        </div>
+						<div class="form-group">
+							<label for="description">Description (optional):</label>
+							<textarea id="description" name="description" rows="3" placeholder="Additional details about the event …"><?php echo $description; ?></textarea>
+						</div>
 
-                                        <?php if (!$isEditing): ?>
-                                        <div class="form-group checkbox-group">
-                                                <label class="checkbox-label">
-                                                        <input type="checkbox" name="exclusive_options" <?php echo $exclusive ? 'checked' : ''; ?>>
-                                                        <span><?= $lang == 'de' ? 'Nur eine Option pro Teilnehmer erlauben' : 'Allow only one option per participant'; ?></span>
-                                                </label>
-                                                <small><?= $lang == 'de' ? 'Aktiviere dies, wenn jede:r nur eine Option wählen darf.' : 'Enable this to limit each voter to a single choice.' ?></small>
-                                        </div>
-                                        <?php endif; ?>
+						<div class="form-group">
+							<label for="author">Author (optional):</label>
+							<input type="text" id="author" name="author" placeholder="e.g., Alex" value="<?php echo htmlspecialchars($author, ENT_QUOTES, 'UTF-8'); ?>">
+						</div>
 
-                                        <div class="form-group">
-                                                <label>Options:</label>
-                                                <div class="options-container">
-							<?php
+						<div class="form-group">
+							<label for="password">Password (optional):</label>
+							<input type="text" id="password" name="password" placeholder="" value="<?= !empty($_POST['edit_password']) ? trim($_POST['edit_password']) : ''; ?>">
+							<small>Setting a password may allow you to edit this poll later.</small>
+						</div>
+
+						<?php if (!$isEditing): ?>
+							<div class="form-group checkbox-group">
+								<label class="checkbox-label">
+									<input type="checkbox" name="exclusive_options" <?php echo $exclusive ? 'checked' : ''; ?>>
+									<span><?= $lang == 'de' ? 'Nur eine Option pro Teilnehmer erlauben' : 'Allow only one option per participant'; ?></span>
+								</label>
+								<small><?= $lang == 'de' ? 'Aktiviere dies, wenn jede:r nur eine Option wählen darf.' : 'Enable this to limit each voter to a single choice.' ?></small>
+							</div>
+						<?php endif; ?>
+
+						<div class="form-group">
+							<label>Options:</label>
+							<div class="options-container">
+								<?php
 								// Always show at least 4 option fields, filled with old data or empty
 								$max_options = max(4, count($options));
 								for ($i = 0; $i < $max_options; $i++) {
 									$opt_val = isset($options[$i]) ? $options[$i] : '';
 									echo '<div class="option-input">
-											<input type="text" name="options[]" placeholder="Option '.($i+1).'" value="'. $opt_val .'">
-										  </div>';
+									<input type="text" name="options[]" placeholder="Option '.($i+1).'" value="'. $opt_val .'">
+									</div>';
 								}
-							?>
-							<button type="button" id="add-option" class="btn btn-secondary btn-small">Add Option +</button>
+								?>
+								<button type="button" id="add-option" class="btn btn-secondary btn-small">Add Option +</button>
+							</div>
 						</div>
-					</div>
 
-                                        <button type="submit" name="<?php echo $isEditing ? 'edit_poll' : 'create_poll'; ?>" class="btn"><?php echo $isEditing ? 'Save Changes' : 'Create Poll'; ?></button>
-                                </form>
-                        </div>
-		<?php endif; ?>
-	</div>
+						<button type="submit" name="<?php echo $isEditing ? 'edit_poll' : 'create_poll'; ?>" class="btn"><?php echo $isEditing ? 'Save Changes' : 'Create Poll'; ?></button> 
+						<button name="cancel" class="btn cancel" onclick="history.back(1); return false;"><?= $lang == 'de' ? 'Abbrechen' : 'Cancel' ?></button>
+					</form>
+				</div>
+			<?php endif; ?>
 
-	<script>
-		function addOption () {
-			const container = document.querySelector('.options-container');
-			const addButton = container.querySelector('button');
-			
-			const newOption = document.createElement('div');
-			const lastInput = container.querySelector('.option-input:last-of-type input');
-			const lastIndex = parseInt(lastInput.getAttribute('placeholder').split(' ').at(-1));
+			<footer>
+				<button id="theme-toggle" type="button" class="btn btn-secondary" aria-pressed="false" aria-label="Toggle dark mode">Dark Mode</button>
+			</footer>
+		</div>
 
-			newOption.className = 'option-input';
-			newOption.innerHTML = '<input type="text" name="options[]" placeholder="Option '+(lastIndex+1)+'">';
+		
 
-			container.insertBefore(newOption, addButton);
-		}
+		<script>
+			function addOption () {
+				const container = document.querySelector('.options-container');
+				const addButton = container.querySelector('button');
 
-		document.querySelector('#add-option')?.addEventListener('click', addOption);
-	</script>
-</body>
-</html>
+				const newOption = document.createElement('div');
+				const lastInput = container.querySelector('.option-input:last-of-type input');
+				const lastIndex = parseInt(lastInput.getAttribute('placeholder').split(' ').at(-1));
+
+				newOption.className = 'option-input';
+				newOption.innerHTML = '<input type="text" name="options[]" placeholder="Option '+(lastIndex+1)+'">';
+
+				container.insertBefore(newOption, addButton);
+			}
+
+			document.querySelector('#add-option')?.addEventListener('click', addOption);
+
+
+			// manual dark mode toggle
+			const buttonMode = document.getElementById("theme-toggle");
+			const mql = window.matchMedia("(prefers-color-scheme: dark)");
+
+			const getStored = () => localStorage.getItem("theme");
+			const isManual = () => getStored() === "light" || getStored() === "dark";
+			const systemPrefersDark = () => mql.matches;
+
+			const applyManual = theme => {
+				document.documentElement.setAttribute("data-theme", theme); // precedence over media query
+				localStorage.setItem("theme", theme); // store only when set manually
+				buttonMode.setAttribute("aria-pressed", "true");
+				updateToggleLabel(theme);
+			};
+
+			const clearManual = () => {
+				document.documentElement.removeAttribute("data-theme"); // fall back to media query
+				localStorage.removeItem("theme");
+				buttonMode.setAttribute("aria-pressed", "false");
+				updateToggleLabel(systemPrefersDark() ? "dark" : "light");
+			};
+
+			const updateToggleLabel = currentTheme => {
+				// Button label indicates the theme you'll switch TO
+				const next = currentTheme === "dark" ? "light" : "dark";
+				buttonMode.textContent = next === "dark" ? "Dark Mode" : "Light Mode";
+			};
+
+			// init
+			(() => {
+				const stored = getStored();
+				if (stored === "light" || stored === "dark") {
+					document.documentElement.setAttribute("data-theme", stored);
+					buttonMode.setAttribute("aria-pressed", "true");
+					updateToggleLabel(stored);
+				} else {
+					// No manual setting: follow system
+					updateToggleLabel(systemPrefersDark() ? "dark" : "light");
+				}
+			})();
+
+			// Keep UI label in sync with OS only when NOT manually overridden
+			mql.addEventListener("change", () => {
+				if (!isManual()) updateToggleLabel(systemPrefersDark() ? "dark" : "light");
+			});
+
+			// Toggle handler: manual choice takes precedence and is stored
+			buttonMode.addEventListener("click", () => {
+				// Determine currently applied theme
+				const current = isManual()
+					? getStored()
+					: (systemPrefersDark() ? "dark" : "light");
+				const next = current === "dark" ? "light" : "dark";
+				applyManual(next);
+			});
+
+		</script>
+	</body>
+	</html>
