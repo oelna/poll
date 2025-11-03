@@ -125,6 +125,7 @@ h3 {
 
 :is(h1, h2, h3) a {
 	color: currentColor;
+	font-weight: inherit;
 	text-decoration: none;
 }
 
