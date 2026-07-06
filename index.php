@@ -460,7 +460,7 @@ if (!$currentPoll && !$pollError && isset($_GET['poll'])) {
 
 				<!-- Results -->
 				<div class="results-summary">
-					<h2><?= $lang == 'de' ? 'Aktuelles Ergebnis' : 'Current Results' ?></h2>
+					<h2><?= $lang == 'de' ? 'Aktuelles Ergebnis' : 'Current Results' ?> (<?= sizeof($currentPoll['votes']) ?>)</h2>
 					<?php if (!empty($currentPoll['votes'])): ?>
 						<table class="voting-table">
 							<thead>
@@ -493,7 +493,7 @@ if (!$currentPoll && !$pollError && isset($_GET['poll'])) {
 								<tr class="voting-table-footer">
 									<th>Total</th>
 									<?php
-									$totalVotes = count($currentPoll['votes']);
+										$totalVotes = count($currentPoll['votes']);
 										$maxVotes = max($optionCounts) ?: 1; // Prevent division by zero
 										$highestVoteCount = max($optionCounts);
 										
@@ -503,7 +503,7 @@ if (!$currentPoll && !$pollError && isset($_GET['poll'])) {
 											$isFavorite = $count > 0 && $count === $highestVoteCount;
 											?>
 											<th class="option-footer <?php echo $isFavorite ? 'vote-favorite' : ''; ?>">
-												<span><?php echo $count . ' ' . ($count == 1 ? 'Vote' : 'Votes'); ?></span>
+												<span><?php echo $count . '/' . $totalVotes . ' ' . ($count == 1 ? 'Vote' : 'Votes'); ?></span>
 												<span><?php echo round($percentage, 1); ?>%</span>
 											</th>
 											<?php
