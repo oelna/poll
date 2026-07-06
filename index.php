@@ -339,6 +339,18 @@ if (!$currentPoll && !$pollError && isset($_GET['poll'])) {
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title><?php echo $currentPoll ? sanitize($currentPoll['title']) : 'Event Scheduler'; ?></title>
 
+	<meta name="description" content="A compelling and ad-free hosting platform for online polls.">
+
+	<meta property="og:title" content="Polls">
+	<meta property="og:description" content="A compelling and ad-free hosting platform for online polls.">
+	<meta property="og:image" content="https://poll.arnorichter.de/preview.png">
+	<meta property="og:url" content="https://poll.arnorichter.de">
+	<meta property="og:type" content="website">
+	<meta property="og:site_name" content="Polls">
+
+	<meta name="robots" content="index, follow">
+
+	<link rel="canonical" href="https://poll.arnorichter.de">
 	<link rel="stylesheet" href="/main.css">
 </head>
 <body>
