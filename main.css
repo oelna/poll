@@ -403,11 +403,14 @@ textarea {
 
 .voting-table tr.voting-table-footer th { border-block-end: 0 }
 
-.voting-table tr.voting-table-footer span:nth-child(1) { display: none; }
 .voting-table tr.voting-table-footer span:nth-child(2) { display: block; }
-
 .voting-table tr.voting-table-footer:hover span:nth-child(1) { display: block; }
-.voting-table tr.voting-table-footer:hover span:nth-child(2) { display: none; }
+
+@media (hover: hover) {
+	/* hide on pointer/mouse devices */
+	.voting-table tr.voting-table-footer span:nth-child(1) { display: none; }
+	.voting-table tr.voting-table-footer:hover span:nth-child(2) { display: none; }
+}
 
 .poll-error {
 	background: #f8d7da;
