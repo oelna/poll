@@ -341,7 +341,7 @@ if (!$currentPoll && !$pollError && isset($_GET['poll'])) {
 
 	<meta name="description" content="A compelling and ad-free hosting platform for online polls.">
 
-	<meta property="og:title" content="Polls">
+	<meta property="og:title" content="<?php echo $currentPoll ? sanitize($currentPoll['title']) : 'Event Scheduler'; ?>">
 	<meta property="og:description" content="A compelling and ad-free hosting platform for online polls.">
 	<meta property="og:image" content="https://poll.arnorichter.de/preview.png">
 	<meta property="og:url" content="https://poll.arnorichter.de">
