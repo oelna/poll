@@ -213,7 +213,9 @@ textarea:focus {
 
 textarea {
 	min-height: calc((4lh + (2 * 0.5em)) + 2px); /* 4 lines of text, plus 2 times padding + border */
+	max-height: calc((10lh + (2 * 0.5em)) + 2px); /* 4 lines of text, plus 2 times padding + border */
 	resize: vertical;
+	field-sizing: content; /* auto-height textarea!! */
 }
 
 .options-container {
